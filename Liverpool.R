@@ -14,6 +14,9 @@ library(OpenStreetMap)
 library(ggmap)
 library(maptools)
 library(spatstat)
+library(ggplot2)
+library(hrbrthemes)
+
 
 #boundary data
 
@@ -155,6 +158,7 @@ school_lsoa <- st_join(imd[,c("IMD_Decile", "lsoa11cd")], school_data)
 
 
 write.csv(school_imd,"data/exports//liverpool_data4.csv", row.names = FALSE)
+write.csv(imd, 'data/exports/imd.csv', row.names = FALSE)
 
 #calculations
 
@@ -208,11 +212,9 @@ qtm(top_10min)
 
 #obesity
 
-obesity <- read.csv(file = 'data/obesity/NCMP_data_Ward_update_2019.csv', header = TRUE)
+obesity <- read.csv(file = 'data/obesity/year6_owandob.csv', header = TRUE)
 
-wards <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp')%>%  st_transform(., 27700)
-
-qtm(wards)
+msoa <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp')%>%  st_transform(., 27700)
 
 #maps
 
@@ -383,3 +385,110 @@ from a school (mean per LSOA)")+
 
 palette.colors()
 
+#schools within 800m of a fast food
+
+tm_shape(osm)+
+  tm_rgb(alpha = 0.3)+
+tm_shape(liverpool)+
+  tm_borders(lwd = 1.5)+
+tm_shape(school_data)+
+  tm_dots("ff_within_800m",
+          style = "jenks",
+          palette= "-viridis",
+          size = 0.4,
+          title ="Fast-food outlets within
+800m of a school")+
+  tm_compass(north = 0,
+             position = c("right", "top"))+
+  tm_layout(legend.bg.color = "white",
+            legend.outside = TRUE,
+            legend.outside.position = "right",
+            legend.frame = TRUE)+
+  tm_scale_bar(position=c("left", "bottom"),
+               breaks = c(0,1,2),
+               text.size = 1)+
+  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
+
+#schools within 400m walk of a fast food
+
+tm_shape(osm)+
+  tm_rgb(alpha = 0.3)+
+tm_shape(liverpool)+
+  tm_borders(lwd = 1.5)+
+tm_shape(school_data)+
+  tm_dots("ff_within_400m",
+          style = "jenks",
+          palette= "-viridis",
+          size = 0.4,
+          title ="Fast-food outlets within
+400m of a school")+
+  tm_compass(north = 0,
+             position = c("right", "top"))+
+  tm_layout(legend.bg.color = "white",
+            legend.outside = TRUE,
+            legend.outside.position = "right",
+            legend.frame = TRUE,
+            legend.format = list(digits = 0))+
+  tm_scale_bar(position=c("left", "bottom"),
+               breaks = c(0,1,2),
+               text.size = 1)+
+  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
+
+##ggplot
+
+ggplot_800 <- school_imd%>% filter(ff_within_800m > 0)
+
+ggplot_800 <- school_imd %>% 
+  # Calculate total
+  group_by(IMD_Decile) %>%
+  summarise(sum_ff = sum(ff_within_800m, na.rm = T)) %>% #change mean to sum
+  # Arrange in descending order by total
+  arrange(desc(sum_ff))
+
+box_800 <- school_imd%>% filter(ff_within_800m > 0)
+
+box_800 %>% ggplot(aes(x = IMD_Decile, y = ff_within_800m, group = IMD_Decile))+ 
+  geom_boxplot()+
+  scale_x_continuous(breaks = seq(1,10))+
+  ylab("Fast-food outlets within 800m of Liverpool schools")+
+  xlab("IMD Decile")
+
+ggplot_800 %>%
+  tail(10) %>%
+  ggplot( aes(x=IMD_Decile, y=sum_ff, label = sum_ff)) +
+  geom_line( color="grey") +
+  geom_point(shape=21, color="black", fill="#69b3a2", size=6) +
+  theme_ipsum()+
+  ylab("Fast-food outlets (number)")+
+  xlab("IMD Decile")+
+  scale_x_continuous(breaks = seq(1,10))+
+  geom_label(hjust = -1.2)
+
+ggplot_mean_800 <- st_join(imd[,c("IMD_Decile")], mean_800)
+
+ggplot_mean_800 <- ggplot_mean_800 %>% filter(mean_800 > 0.1)
+
+ggplot_mean_agg <- ggplot_mean_800 %>% 
+  # Calculate total
+  group_by(IMD_Decile) %>%
+  summarise(sum_mean = sum(mean_800, na.rm = T)) %>% #change mean to sum
+  # Arrange in descending order by total
+  arrange(desc(sum_mean))
+
+remove(ggplot_mean_agg)
+
+ggplot(ggplot_800,aes(x=sum_ff)) + geom_
+
+cor(ggplot_800$IMD_Decile,ggplot_800$ff_within_800m, use = "complete.obs")
+
+ggplot_10min <- school_imd %>% filter(lt_10mins >0)
+
+ggplot(ggplot_10min,aes(x=IMD_Decile, y=lt_10mins)) + geom_point()
+
+cor(ggplot_10min$IMD_Decile,ggplot_10min$lt_10mins, use = "complete.obs")
+
+tmap_mode("view")
+
+tm_shape(imd)+
+  tm_polygons("IMD_Decile",
+              alpha = 0.3)
