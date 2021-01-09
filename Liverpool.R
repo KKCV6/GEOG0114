@@ -1,3 +1,5 @@
+#Step 1: Load libraries
+
 library(magrittr)
 library(osmdata)
 library(dodgr)
@@ -11,8 +13,9 @@ library(OpenStreetMap)
 library(ggmap)
 library(maptools)
 library(ggplot2)
+library(stringr)
 
-#boundary data
+#Step 2: boundary data
 
 liverpool <- st_read('data/boundaries/liverpool/england_lad_2011_clipped.shp')
 liverpool <- liverpool%>% filter(str_detect(name, "Liverpool"))
@@ -20,11 +23,15 @@ liverpool <- liverpool%>% filter(str_detect(name, "Liverpool"))
 liverpool_lsoa <- st_read('data/boundaries/liverpool/england_lsoa_2011_clipped.shp')
 liverpool_lsoa <- liverpool_lsoa %>% filter(str_detect(name, "Liverpool"))
 
-#extract point of interest and highway data for network analysis routing
+wards <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp') %>% st_transform(crs = 27700)
+
+wards <- wards %>% filter(lad15nm == "Liverpool")
+
+#Step 3: extract point of interest and highway data for network analysis routing
 
 bb <- c(-3.078232,53.316518,-2.743149,53.525207)#liverpool #bbfinder.com
 
-assign("has_internet_via_proxy", TRUE, environment(curl::has_internet))
+assign("has_internet_via_proxy", TRUE, environment(curl::has_internet)) #to overide internet bug
 
 osmdata <- opq(bbox = bb) %>%
   add_osm_feature(key = 'highway', value = c('primary', 'secondary', 'tertiary', 'residential','path','footway', 'unclassified','living_street', 'pedestrian')) %>% 
@@ -55,7 +62,7 @@ ff_points <- st_filter(ff_points, liverpool, .pred = st_intersects)
 l_schools <- st_transform(l_schools, crs = 4326)
 ff_points <- st_transform(ff_points, crs = 4326)
 
-#snap values to network
+#Step 4: snap values to network
 
 network_sp <- as(liverpool_edges, 'Spatial')
 
@@ -83,12 +90,12 @@ tm_shape(ff_snap)+
   tm_shape(liverpool)+
   tm_fill(alpha = 0.8)
 
-#create graph
+#Step 5: create graph
 graph <- weight_streetnet(liverpool_edges, wt_profile = "foot")
 
 graph_connected <- graph[graph$component == 1,]
 
-#create a matrix
+#Step 6: create a matrix
 
 sch_to_ff_calc <- dodgr_dists(graph_connected, from = st_coordinates(schools_snap),
                               to = st_coordinates(ff_snap), 
@@ -115,11 +122,11 @@ school_data <- st_transform(schools_snap, crs = 27700)
 
 ff_bng <- st_transform(ff_snap, crs = 27700)
 
-#have a look
-
 tm_shape(schools_snap)+
   tm_dots("lt_10mins",
           style = "jenks")
+
+#Step 6: load imd data
 
 imd <- st_read('data/imd/Indices_of_Multiple_Deprivation_IMD_2019.shp')
 
@@ -133,12 +140,9 @@ school_imd <- st_join(school_data,imd[,c("IMD_Decile", "lsoa11cd")])
 
 school_lsoa <- st_join(imd[,c("IMD_Decile", "lsoa11cd")], school_data)
 
-
 write.csv(school_imd,"data/exports//liverpool_data7.csv", row.names = FALSE)
 
-#calculations
-
-remove(mean)
+#Step 7: calculations and aggregation to LSOA level
 
 mean_400 <- school_lsoa %>% 
   # Calculate total
@@ -182,88 +186,13 @@ lt5min <- school_lsoa %>%
   # Arrange in descending order by total
   arrange(desc(avg_lt_5min))
 
-#maps
+#Step 8: make your maps
 
 #basemaps
 osm <- get_map(bb, map.type = "toner-lite")
   
 osm <-  read_osm(bb, type = "esri-topo")
 osm <- st_transform(osm, crs = 27700)
-
-stamen <- read_osm(bb, type = 'stamen-toner')
-stamen <- st_transform(osm, crs = 27700)
-
-tm_shape(osm)+
-  tm_rgb()
-
-#mean800m
-
-wards <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp') %>% st_transform(crs = 27700)
-
-wards <- wards %>% filter(lad15nm == "Liverpool")
-
-tmap_mode("view")
-
-qtm(wards)
-
-central <- wards %>% filter(wd15nm == "Central")
-princes_park <- wards %>% filter(wd15nm == "Princes Park")
-river <- wards %>% filter(wd15nm == "Riverside")
-
-live_city_centre <- rbind(central, princes_park, river)
-
-live_city_centre <- st_union(live_city_centre)
-
-qtm(live_city_centre)
-
-tmap_mode("plot")
-
-tm_shape(osm)+
-  tm_rgb(alpha = 0.5)+
-tm_shape(imd)+
-  tm_polygons('IMD_Decile',
-              title = "IMD Decile",
-              alpha = 0.4,
-              palette = 'YlGnBu')+
-tm_shape(mean_800)+
-  tm_bubbles("mean_800",
-             col = "darkred",
-             colorNA = "white",
-             title.size = "Fast-food outlets <800m 
-from a school (mean per LSOA)")+
-  tm_compass(north = 0,
-             position = c("right", "top"))+
-  tm_layout(legend.bg.color = "white",
-            legend.outside = TRUE,
-            legend.frame = "black")+
-  tm_scale_bar(position=c("left", "bottom"),
-               breaks = c(0,1,2),
-               text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
-  tm_shape(live_city_centre) +
-  tm_borders(lwd = 2.5,
-             col = "grey24")+
-  tm_add_legend(type = "line",
-                labels = "City Centre",
-                col = "grey24",
-                lwd = 3)
-  
-#using school data
-tm_shape(osm)+
-  tm_rgb(alpha = 0.5)+
-  tm_shape(imd)+
-  tm_polygons('IMD_Decile',
-              title = "IMD Decile",
-              alpha = 0.5,
-              palette = 'YlGnBu')+
-  tm_shape(school_imd)+
-  tm_bubbles("ff_within_800",
-             col = "orange",
-             colorNA = "white",
-             title.size = "FF within 800m of a school")+
-  tm_compass(north = 0,
-             position = c("right", "top"))+
-  tm_layout(legend.bg.color = "white")
 
 #schools and fast-food outlets
 
@@ -400,9 +329,51 @@ tm_shape(school_data)+
                text.size = 1)+
   tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
 
-##ggplot
+#mean800m with city centre location and imd
 
-ggplot_800 <- school_imd%>% filter(ff_within_800m > 0)
+central <- wards %>% filter(wd15nm == "Central")
+princes_park <- wards %>% filter(wd15nm == "Princes Park")
+river <- wards %>% filter(wd15nm == "Riverside")
+
+live_city_centre <- rbind(central, princes_park, river)
+
+live_city_centre <- st_union(live_city_centre)
+
+qtm(live_city_centre)
+
+tmap_mode("plot")
+
+tm_shape(osm)+
+  tm_rgb(alpha = 0.5)+
+  tm_shape(imd)+
+  tm_polygons('IMD_Decile',
+              title = "IMD Decile",
+              alpha = 0.4,
+              palette = 'YlGnBu')+
+  tm_shape(mean_800)+
+  tm_bubbles("mean_800",
+             col = "darkred",
+             colorNA = "white",
+             title.size = "Fast-food outlets <800m 
+from a school (mean per LSOA)")+
+  tm_compass(north = 0,
+             position = c("right", "top"))+
+  tm_layout(legend.bg.color = "white",
+            legend.outside = TRUE,
+            legend.frame = "black")+
+  tm_scale_bar(position=c("left", "bottom"),
+               breaks = c(0,1,2),
+               text.size = 1)+
+  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
+  tm_shape(live_city_centre) +
+  tm_borders(lwd = 2.5,
+             col = "grey24")+
+  tm_add_legend(type = "line",
+                labels = "City Centre",
+                col = "grey24",
+                lwd = 3)
+
+#report data tables and aggregation by IMD
 
 ggplot_5 <- school_imd %>% 
   group_by(IMD_Decile) %>%
@@ -429,7 +400,7 @@ write.csv(report_table,"data/exports//report_table.csv", row.names = FALSE)
 
 #box plots
 
-box_800 <- school_imd%>% filter(ff_within_800m > 0)
+box_800 <- school_imd %>% filter(ff_within_800m > 0)
 
 box_800 %>% ggplot(aes(x = IMD_Decile, y = ff_within_800m, group = IMD_Decile))+ 
   geom_boxplot()+
