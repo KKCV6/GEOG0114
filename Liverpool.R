@@ -6,17 +6,11 @@ library(expss)
 library(tmap)
 library(dplyr)
 library(RColorBrewer)
-library(ggplot2)
-library(stringr)
-library(leaflet)
 library(tmaptools)
 library(OpenStreetMap)
 library(ggmap)
 library(maptools)
-library(spatstat)
 library(ggplot2)
-library(hrbrthemes)
-
 
 #boundary data
 
@@ -32,8 +26,6 @@ bb <- c(-3.078232,53.316518,-2.743149,53.525207)#liverpool #bbfinder.com
 
 assign("has_internet_via_proxy", TRUE, environment(curl::has_internet))
 
-rm(list = ls())
-
 osmdata <- opq(bbox = bb) %>%
   add_osm_feature(key = 'highway', value = c('primary', 'secondary', 'tertiary', 'residential','path','footway', 'unclassified','living_street', 'pedestrian')) %>% 
   osmdata_sf()
@@ -41,10 +33,6 @@ osmdata <- opq(bbox = bb) %>%
 liverpool_nodes <- osmdata$osm_points[,"osm_id"]
 
 liverpool_edges <- osmdata$osm_lines[,c("osm_id", "name", "highway","maxspeed", "oneway")]
-
-#schools <- opq(bbox=bb) %>% 
-  #add_osm_feature(key = 'amenity', value = c('school')) %>% 
-  #osmdata_sf()
 
 ff <- opq(bbox = bb) %>% 
   add_osm_feature(key = 'amenity', value = 'fast_food') %>% 
@@ -66,7 +54,6 @@ ff_points <- st_filter(ff_points, liverpool, .pred = st_intersects)
 
 l_schools <- st_transform(l_schools, crs = 4326)
 ff_points <- st_transform(ff_points, crs = 4326)
-
 
 #snap values to network
 
@@ -118,11 +105,11 @@ schools_snap$ff_within_400m <- count_row_if(lt(401), sch_to_ff_calc)
 schools_snap$ff_within_800m <- count_row_if(lt(801), sch_to_ff_calc)  
 schools_snap$mean_dist <- mean_row(sch_to_ff_calc)
 schools_snap$average_dist_lt_800m <- mean_row_if(lt(801), sch_to_ff_calc)
-schools_snap$min_dist <- min_row(sch_to_ff_calc)
+schools_snap$avg_dist_lt_400m <- mean_row_if(lt(401), sch_to_ff_calc)
 
 
-schools_snap$lt_10mins <- count_row_if(lt(600), sch_to_ff_times) #10 mins = 600 seconds
-schools_snap$lt_5mins <- count_row_if(lt(300), sch_to_ff_times) #5 mins = 300 seconds
+schools_snap$lt_10mins <- count_row_if(lt(601), sch_to_ff_times) #10 mins = 600 seconds
+schools_snap$lt_5mins <- count_row_if(lt(301), sch_to_ff_times) #5 mins = 300 seconds
 
 school_data <- st_transform(schools_snap, crs = 27700)
 
@@ -133,16 +120,6 @@ ff_bng <- st_transform(ff_snap, crs = 27700)
 tm_shape(schools_snap)+
   tm_dots("lt_10mins",
           style = "jenks")
-
-brewer.pal.info
-
-tm_shape(school_data)+
-  tm_dots("mean_dist",
-          palette = "viridis",
-          showNA = FALSE,
-          colorNA = "white")+
-  tm_shape(liverpool)+
-  tm_polygons(alpha = 0.3)
 
 imd <- st_read('data/imd/Indices_of_Multiple_Deprivation_IMD_2019.shp')
 
@@ -157,8 +134,7 @@ school_imd <- st_join(school_data,imd[,c("IMD_Decile", "lsoa11cd")])
 school_lsoa <- st_join(imd[,c("IMD_Decile", "lsoa11cd")], school_data)
 
 
-write.csv(school_imd,"data/exports//liverpool_data4.csv", row.names = FALSE)
-write.csv(imd, 'data/exports/imd.csv', row.names = FALSE)
+write.csv(school_imd,"data/exports//liverpool_data7.csv", row.names = FALSE)
 
 #calculations
 
@@ -206,16 +182,6 @@ lt5min <- school_lsoa %>%
   # Arrange in descending order by total
   arrange(desc(avg_lt_5min))
 
-top_10min <- school_data %>% filter(ff_within_800m>30)
-
-qtm(top_10min)
-
-#obesity
-
-obesity <- read.csv(file = 'data/obesity/year6_owandob.csv', header = TRUE)
-
-msoa <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp')%>%  st_transform(., 27700)
-
 #maps
 
 #basemaps
@@ -230,37 +196,27 @@ stamen <- st_transform(osm, crs = 27700)
 tm_shape(osm)+
   tm_rgb()
 
-#within800 <- school_imd %>% filter(ff_within_800m >0)
-
-tm_shape(imd)+
-  tm_polygons('IMD_Decile',
-          title = "IMD Decile",
-              alpha = 0.5,
-              palette = 'YlGnBu')
-
-
-  tm_borders()+
-tm_shape(school_imd)+
-  tm_bubbles(size = "ff_within_800m",
-             col = "orange",
-             border.col = "orange",
-             title.size = "FF within 800m of a school")
-
-tm_shape(imd)+
-  tm_polygons('IMD_Decile',
-              title = "IMD Decile",
-              alpha = 0.5,
-              palette = 'YlGnBu')+
-  tm_borders()+
-  tm_shape(school_imd)+
-  tm_bubbles(size = "ff_within_400m",
-             col = "orange",
-             border.col = "orange",
-             title.size = "FF within 400m of a school")+
-  tm_compass(north = 0,
-             position = c("right", "top"))
-
 #mean800m
+
+wards <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp') %>% st_transform(crs = 27700)
+
+wards <- wards %>% filter(lad15nm == "Liverpool")
+
+tmap_mode("view")
+
+qtm(wards)
+
+central <- wards %>% filter(wd15nm == "Central")
+princes_park <- wards %>% filter(wd15nm == "Princes Park")
+river <- wards %>% filter(wd15nm == "Riverside")
+
+live_city_centre <- rbind(central, princes_park, river)
+
+live_city_centre <- st_union(live_city_centre)
+
+qtm(live_city_centre)
+
+tmap_mode("plot")
 
 tm_shape(osm)+
   tm_rgb(alpha = 0.5)+
@@ -283,8 +239,14 @@ from a school (mean per LSOA)")+
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
-  
+  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
+  tm_shape(live_city_centre) +
+  tm_borders(lwd = 2.5,
+             col = "grey24")+
+  tm_add_legend(type = "line",
+                labels = "City Centre",
+                col = "grey24",
+                lwd = 3)
   
 #using school data
 tm_shape(osm)+
@@ -303,7 +265,7 @@ tm_shape(osm)+
              position = c("right", "top"))+
   tm_layout(legend.bg.color = "white")
 
-#schools
+#schools and fast-food outlets
 
 UK_outline <- st_read('data/boundaries/gadm36_GBR_shp/gadm36_GBR_0.shp') %>% st_transform(., 27700)
 
@@ -317,6 +279,10 @@ Worldcities <- st_read('data/worldcities/World_Cities.shp') %>%  st_transform(.,
 Worldcities2 <- Worldcities %>%
   filter(CNTRY_NAME=='United Kingdom'&
            Worldcities$CITY_NAME=='London'|
+           Worldcities$CITY_NAME=='Liverpool')
+
+liverpool_text <- Worldcities %>%
+  filter(CNTRY_NAME=='United Kingdom'&
            Worldcities$CITY_NAME=='Liverpool')
 
 liverpoolbb <- st_bbox(liverpool_edges,crs = st_crs(school_data)) %>% 
@@ -438,12 +404,30 @@ tm_shape(school_data)+
 
 ggplot_800 <- school_imd%>% filter(ff_within_800m > 0)
 
-ggplot_800 <- school_imd %>% 
-  # Calculate total
+ggplot_5 <- school_imd %>% 
   group_by(IMD_Decile) %>%
-  summarise(sum_ff = sum(ff_within_800m, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
-  arrange(desc(sum_ff))
+  summarise(sum_5 = sum(lt_5mins, na.rm = T)) 
+
+ggplot_10 <- school_imd %>% 
+  group_by(IMD_Decile) %>%
+  summarise(sum_10 = sum(lt_10mins, na.rm = T))
+
+ggplot_400 <- school_imd %>% 
+  group_by(IMD_Decile) %>%
+  summarise(sum_400 = sum(ff_within_400m, na.rm = T))
+
+ggplot_800 <- school_imd %>% 
+  group_by(IMD_Decile) %>%
+  summarise(sum_ff = sum(ff_within_800m, na.rm = T))
+
+report_table <- ggplot_10
+report_table$within_800 <- ggplot_800$sum_ff 
+report_table$within_5min <- ggplot_5$sum_5
+report_table$within_400 <- ggplot_400$sum_400
+
+write.csv(report_table,"data/exports//report_table.csv", row.names = FALSE)
+
+#box plots
 
 box_800 <- school_imd%>% filter(ff_within_800m > 0)
 
@@ -453,42 +437,79 @@ box_800 %>% ggplot(aes(x = IMD_Decile, y = ff_within_800m, group = IMD_Decile))+
   ylab("Fast-food outlets within 800m of Liverpool schools")+
   xlab("IMD Decile")
 
-ggplot_800 %>%
-  tail(10) %>%
-  ggplot( aes(x=IMD_Decile, y=sum_ff, label = sum_ff)) +
-  geom_line( color="grey") +
-  geom_point(shape=21, color="black", fill="#69b3a2", size=6) +
-  theme_ipsum()+
-  ylab("Fast-food outlets (number)")+
-  xlab("IMD Decile")+
+box_800_imd1 <- box_800 %>% filter(IMD_Decile =="1")
+box_800_imd2 <- box_800 %>% filter(IMD_Decile =="2")
+box_800_imd3 <- box_800 %>% filter(IMD_Decile =="3")
+box_800_imd4 <- box_800 %>% filter(IMD_Decile =="4")
+box_800_imd5 <- box_800 %>% filter(IMD_Decile =="5")
+box_800_imd6 <- box_800 %>% filter(IMD_Decile =="6")
+box_800_imd7 <- box_800 %>% filter(IMD_Decile =="7")
+box_800_imd8 <- box_800 %>% filter(IMD_Decile =="8")
+box_800_imd9 <- box_800 %>% filter(IMD_Decile =="9")
+box_800_imd10 <- box_800 %>% filter(IMD_Decile =="10")
+
+IQR(box_800_imd1$ff_within_800m)
+IQR(box_800_imd2$ff_within_800m)
+IQR(box_800_imd3$ff_within_800m)
+IQR(box_800_imd4$ff_within_800m)
+IQR(box_800_imd5$ff_within_800m)
+IQR(box_800_imd6$ff_within_800m)
+IQR(box_800_imd7$ff_within_800m)
+IQR(box_800_imd8$ff_within_800m)
+IQR(box_800_imd9$ff_within_800m)
+IQR(box_800_imd10$ff_within_800m)
+
+summary(box_800_imd1$ff_within_800m)
+summary(box_800_imd2$ff_within_800m)
+summary(box_800_imd3$ff_within_800m)
+summary(box_800_imd4$ff_within_800m)
+summary(box_800_imd5$ff_within_800m)
+summary(box_800_imd6$ff_within_800m)
+summary(box_800_imd7$ff_within_800m)
+summary(box_800_imd8$ff_within_800m)
+summary(box_800_imd9$ff_within_800m)
+summary(box_800_imd10$ff_within_800m)
+
+
+box_10 <- school_imd %>% filter(lt_10mins > 0)
+
+box_10 %>% ggplot(aes(x = IMD_Decile, y = lt_10mins, group = IMD_Decile))+ 
+  geom_boxplot()+
   scale_x_continuous(breaks = seq(1,10))+
-  geom_label(hjust = -1.2)
+  ylab("Fast-food outlets within 10-min walk of Liverpool schools")+
+  xlab("IMD Decile")+
+  text(y = boxplot.stats(IMD_Decile)$stats, labels = boxplot.stats(lt_10mins)$stats, x = 1.25)
 
-ggplot_mean_800 <- st_join(imd[,c("IMD_Decile")], mean_800)
+box_10_imd1 <- box_10 %>% filter(IMD_Decile =="1")
+box_10_imd2 <- box_10 %>% filter(IMD_Decile =="2")
+box_10_imd3 <- box_10 %>% filter(IMD_Decile =="3")
+box_10_imd4 <- box_10 %>% filter(IMD_Decile =="4")
+box_10_imd5 <- box_10 %>% filter(IMD_Decile =="5")
+box_10_imd6 <- box_10 %>% filter(IMD_Decile =="6")
+box_10_imd7 <- box_10 %>% filter(IMD_Decile =="7")
+box_10_imd8 <- box_10 %>% filter(IMD_Decile =="8")
+box_10_imd9 <- box_10 %>% filter(IMD_Decile =="9")
+box_10_imd10 <- box_10 %>% filter(IMD_Decile =="10")
 
-ggplot_mean_800 <- ggplot_mean_800 %>% filter(mean_800 > 0.1)
+summary(box_10_imd1$lt_10mins)
+summary(box_10_imd2$lt_10mins)
+summary(box_10_imd3$lt_10mins)
+summary(box_10_imd4$lt_10mins)
+summary(box_10_imd5$lt_10mins)
+summary(box_10_imd6$lt_10mins)
+summary(box_10_imd7$lt_10mins)
+summary(box_10_imd8$lt_10mins)
+summary(box_10_imd9$lt_10mins)
+summary(box_10_imd10$lt_10mins)
 
-ggplot_mean_agg <- ggplot_mean_800 %>% 
-  # Calculate total
-  group_by(IMD_Decile) %>%
-  summarise(sum_mean = sum(mean_800, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
-  arrange(desc(sum_mean))
+IQR(box_10_imd1$lt_10mins)
+IQR(box_10_imd2$lt_10mins)
+IQR(box_10_imd3$lt_10mins)
+IQR(box_10_imd4$lt_10mins)
+IQR(box_10_imd5$lt_10mins)
+IQR(box_10_imd6$lt_10mins)
+IQR(box_10_imd7$lt_10mins)
+IQR(box_10_imd8$lt_10mins)
+IQR(box_10_imd9$lt_10mins)
+IQR(box_10_imd10$lt_10mins)
 
-remove(ggplot_mean_agg)
-
-ggplot(ggplot_800,aes(x=sum_ff)) + geom_
-
-cor(ggplot_800$IMD_Decile,ggplot_800$ff_within_800m, use = "complete.obs")
-
-ggplot_10min <- school_imd %>% filter(lt_10mins >0)
-
-ggplot(ggplot_10min,aes(x=IMD_Decile, y=lt_10mins)) + geom_point()
-
-cor(ggplot_10min$IMD_Decile,ggplot_10min$lt_10mins, use = "complete.obs")
-
-tmap_mode("view")
-
-tm_shape(imd)+
-  tm_polygons("IMD_Decile",
-              alpha = 0.3)
