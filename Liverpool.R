@@ -14,6 +14,7 @@ library(ggmap)
 library(maptools)
 library(ggplot2)
 library(stringr)
+library(grid)
 
 #Step 2: boundary data
 
@@ -24,14 +25,14 @@ liverpool_lsoa <- st_read('data/boundaries/liverpool/england_lsoa_2011_clipped.s
 liverpool_lsoa <- liverpool_lsoa %>% filter(str_detect(name, "Liverpool"))
 
 wards <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp') %>% st_transform(crs = 27700)
-
 wards <- wards %>% filter(lad15nm == "Liverpool")
 
 #Step 3: extract point of interest and highway data for network analysis routing
+#note schools data was downloaded from Geofabrik seperately as the osmextract point data contained every corresponding polygon vertices, causing duplicate points for each school
 
 bb <- c(-3.078232,53.316518,-2.743149,53.525207)#liverpool #bbfinder.com
 
-assign("has_internet_via_proxy", TRUE, environment(curl::has_internet)) #to overide internet bug
+assign("has_internet_via_proxy", TRUE, environment(curl::has_internet)) #force R to recognise internet connection
 
 osmdata <- opq(bbox = bb) %>%
   add_osm_feature(key = 'highway', value = c('primary', 'secondary', 'tertiary', 'residential','path','footway', 'unclassified','living_street', 'pedestrian')) %>% 
@@ -46,21 +47,18 @@ ff <- opq(bbox = bb) %>%
   osmdata_sf()
 
 ff_points <- ff$osm_points[,c("osm_id", "name")]
+ff_points <- st_transform(ff_points, crs = 27700)
+ff_points <- st_filter(ff_points, liverpool, .pred = st_intersects)
+ff_points <- st_transform(ff_points, crs = 4326)
 
-poi <- st_read('data/poi/gis_osm_pois_a_free_1.shp')
+poi <- st_read('data/poi/gis_osm_pois_a_free_1.shp') 
 
 schools <- poi %>% filter(fclass == "school")
 
 schools_bng <- st_transform(schools, crs = 27700)
 
 l_schools <- st_filter(schools_bng, liverpool, .pred = st_intersects)
-
-ff_points <- st_transform(ff_points, crs = 27700)
-
-ff_points <- st_filter(ff_points, liverpool, .pred = st_intersects)
-
 l_schools <- st_transform(l_schools, crs = 4326)
-ff_points <- st_transform(ff_points, crs = 4326)
 
 #Step 4: snap values to network
 
@@ -71,29 +69,18 @@ schools_sp <- as(l_schools, 'Spatial')
 ff_sp <- as(ff_points, 'Spatial')
 
 schools_snap <- maptools::snapPointsToLines(schools_sp, network_sp)
-
 schools_snap <- st_as_sf(schools_snap)
 
 ff_snap <- maptools::snapPointsToLines(ff_sp, network_sp)
-
 ff_snap <- st_as_sf(ff_snap)
-
 ff_snap$osm_id <- ff_points$osm_id
 ff_snap$name <- ff_points$name
 
-tmap_mode("view")
+#Step 5: create graph from the road network
 
-tm_shape(ff_snap)+
-  tm_dots(col = "red")+
-  tm_shape(schools_snap)+
-  tm_dots(col = "green")+
-  tm_shape(liverpool)+
-  tm_fill(alpha = 0.8)
+graph <- weight_streetnet(liverpool_edges, wt_profile = "foot") #weight for pedestrians
 
-#Step 5: create graph
-graph <- weight_streetnet(liverpool_edges, wt_profile = "foot")
-
-graph_connected <- graph[graph$component == 1,]
+graph_connected <- graph[graph$component == 1,] #remove any un-connected vertices
 
 #Step 6: create a matrix
 
@@ -105,7 +92,7 @@ sch_to_ff_calc <- dodgr_dists(graph_connected, from = st_coordinates(schools_sna
 
 sch_to_ff_times <- dodgr_times(graph_connected, from = st_coordinates(schools_snap),
                                to = st_coordinates(ff_snap), 
-                               shortest = TRUE) #calculate fastest time
+                               shortest = TRUE) 
 
 
 schools_snap$ff_within_400m <- count_row_if(lt(401), sch_to_ff_calc)
@@ -114,7 +101,6 @@ schools_snap$mean_dist <- mean_row(sch_to_ff_calc)
 schools_snap$average_dist_lt_800m <- mean_row_if(lt(801), sch_to_ff_calc)
 schools_snap$avg_dist_lt_400m <- mean_row_if(lt(401), sch_to_ff_calc)
 
-
 schools_snap$lt_10mins <- count_row_if(lt(601), sch_to_ff_times) #10 mins = 600 seconds
 schools_snap$lt_5mins <- count_row_if(lt(301), sch_to_ff_times) #5 mins = 300 seconds
 
@@ -122,16 +108,10 @@ school_data <- st_transform(schools_snap, crs = 27700)
 
 ff_bng <- st_transform(ff_snap, crs = 27700)
 
-tm_shape(schools_snap)+
-  tm_dots("lt_10mins",
-          style = "jenks")
-
 #Step 6: load imd data
 
 imd <- st_read('data/imd/Indices_of_Multiple_Deprivation_IMD_2019.shp')
-
 imd <- imd %>% filter(str_detect(lsoa11nm, "Liverpool"))
-
 imd <- st_transform(imd, crs = 27700)
 
 names(imd)
@@ -152,49 +132,38 @@ mean_400 <- school_lsoa %>%
   arrange(desc(mean_400))
 
 mean_800 <- school_lsoa %>% 
-  # Calculate total
   group_by(lsoa11cd) %>%
-  summarise(mean_800 = mean(ff_within_800m, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
+  summarise(mean_800 = mean(ff_within_800m, na.rm = T)) %>% 
   arrange(desc(mean_800))
 
 mean_dist <- school_lsoa %>% 
-  # Calculate total
   group_by(lsoa11cd) %>%
-  summarise(mean_dist = mean(mean_dist, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
+  summarise(mean_dist = mean(mean_dist, na.rm = T)) %>% 
   arrange(desc(mean_dist))
 
 lt800m <- school_lsoa %>% 
-  # Calculate total
   group_by(lsoa11cd) %>%
-  summarise(average_dist_lt_800m = mean(average_dist_lt_800m, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
+  summarise(average_dist_lt_800m = mean(average_dist_lt_800m, na.rm = T)) %>% 
   arrange(desc(average_dist_lt_800m))
 
 lt10min <- school_lsoa %>% 
-  # Calculate total
   group_by(lsoa11cd) %>%
-  summarise(avg_lt_10min = mean(lt_10mins, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
+  summarise(avg_lt_10min = mean(lt_10mins, na.rm = T)) %>% 
   arrange(desc(avg_lt_10min))
 
 lt5min <- school_lsoa %>% 
-  # Calculate total
   group_by(lsoa11cd) %>%
-  summarise(avg_lt_5min = mean(lt_5mins, na.rm = T)) %>% #change mean to sum
-  # Arrange in descending order by total
+  summarise(avg_lt_5min = mean(lt_5mins, na.rm = T)) %>% 
   arrange(desc(avg_lt_5min))
 
 #Step 8: make your maps
 
-#basemaps
+  #basemaps
 osm <- get_map(bb, map.type = "toner-lite")
-  
 osm <-  read_osm(bb, type = "esri-topo")
 osm <- st_transform(osm, crs = 27700)
 
-#schools and fast-food outlets
+  #schools and fast-food outlets
 
 UK_outline <- st_read('data/boundaries/gadm36_GBR_shp/gadm36_GBR_0.shp') %>% st_transform(., 27700)
 
@@ -221,6 +190,10 @@ map <- tm_shape(osm)+
   tm_rgb(alpha = 0.5)+
 tm_shape(liverpool)+
   tm_borders(lwd = 1.5)+
+  tm_add_legend(type = "line",
+                labels = "Liverpool",
+                col = "black",
+                lwd = 1)+
 tm_shape(school_data)+
   tm_dots(col = "blue",
           size = 0.1)+
@@ -252,33 +225,8 @@ tm_shape(Worldcities2) +
   tm_symbols(col = "green", scale = .3)+
   tm_text("CITY_NAME", xmod=0.5, ymod=-0.5, size = 0.7, fontface = "bold")
 
-library(grid)
 map
 print(inset, vp = viewport(0.76, 0.24, width = 0.4, height = 0.45))
-
-#schools within a 10 minutes walk
-
-tm_shape(osm)+
-  tm_rgb(alpha = 0.3)+
-tm_shape(liverpool)+
-  tm_borders(lwd = 1.5)+
-tm_shape(lt10min)+
-  tm_bubbles("avg_lt_10min",
-             col = "darkgreen",
-             title.size = "Fast-food outlets <10min walk
-from a school (mean per LSOA)")+
-  tm_compass(north = 0,
-             position = c("right", "top"))+
-  tm_layout(legend.bg.color = "white",
-            legend.outside = TRUE,
-            legend.outside.position = "right",
-            legend.frame = TRUE)+
-  tm_scale_bar(position=c("left", "bottom"),
-               breaks = c(0,1,2),
-               text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
-
-palette.colors()
 
 #schools within 800m of a fast food
 
@@ -286,6 +234,10 @@ tm_shape(osm)+
   tm_rgb(alpha = 0.3)+
 tm_shape(liverpool)+
   tm_borders(lwd = 1.5)+
+  tm_add_legend(type = "line",
+                labels = "Liverpool",
+                col = "black",
+                lwd = 1)+
 tm_shape(school_data)+
   tm_dots("ff_within_800m",
           style = "jenks",
@@ -304,12 +256,16 @@ tm_shape(school_data)+
                text.size = 1)+
   tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
 
-#schools within 400m walk of a fast food
+#schools within 400m of a fast food
 
 tm_shape(osm)+
   tm_rgb(alpha = 0.3)+
 tm_shape(liverpool)+
   tm_borders(lwd = 1.5)+
+  tm_add_legend(type = "line",
+                labels = "Liverpool",
+                col = "black",
+                lwd = 1)+
 tm_shape(school_data)+
   tm_dots("ff_within_400m",
           style = "jenks",
@@ -345,7 +301,7 @@ tmap_mode("plot")
 
 tm_shape(osm)+
   tm_rgb(alpha = 0.5)+
-  tm_shape(imd)+
+tm_shape(imd)+
   tm_polygons('IMD_Decile',
               title = "IMD Decile",
               alpha = 0.4,
@@ -398,7 +354,7 @@ report_table$within_400 <- ggplot_400$sum_400
 
 write.csv(report_table,"data/exports//report_table.csv", row.names = FALSE)
 
-#box plots
+#box plots and summary statistics
 
 box_800 <- school_imd %>% filter(ff_within_800m > 0)
 
@@ -440,7 +396,6 @@ summary(box_800_imd7$ff_within_800m)
 summary(box_800_imd8$ff_within_800m)
 summary(box_800_imd9$ff_within_800m)
 summary(box_800_imd10$ff_within_800m)
-
 
 box_10 <- school_imd %>% filter(lt_10mins > 0)
 
