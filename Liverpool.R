@@ -28,7 +28,8 @@ wards <- st_read('data/boundaries/Wards__December_2015__Boundaries.shp') %>% st_
 wards <- wards %>% filter(lad15nm == "Liverpool")
 
 #Step 3: extract point of interest and highway data for network analysis routing
-#note schools data was downloaded from Geofabrik seperately as the osmextract point data contained every corresponding polygon vertices, causing duplicate points for each school
+#note schools data was downloaded from Geofabrik seperately as the osmextract point data 
+#contained every corresponding polygon vertices, causing duplicate points for each school
 
 bb <- c(-3.078232,53.316518,-2.743149,53.525207)#liverpool #bbfinder.com
 
@@ -159,7 +160,6 @@ lt5min <- school_lsoa %>%
 #Step 8: make your maps
 
   #basemaps
-osm <- get_map(bb, map.type = "toner-lite")
 osm <-  read_osm(bb, type = "esri-topo")
 osm <- st_transform(osm, crs = 27700)
 
