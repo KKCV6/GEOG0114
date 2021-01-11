@@ -209,7 +209,7 @@ tm_shape(ff_bng)+
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
+  tm_credits("(c) OpenStreetMap contributors", position=c("left", "bottom"))+
   tm_add_legend(type = 'symbol',
                 col = c("blue", "red"),
                 labels = c("Schools", "Fast-food outlets"))
@@ -254,7 +254,7 @@ tm_shape(school_data)+
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
+  tm_credits("(c) OpenStreetMap contributors", position=c("left", "bottom"))
 
 #schools within 400m of a fast food
 
@@ -283,7 +283,7 @@ tm_shape(school_data)+
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
+  tm_credits("(c) OpenStreetMap contributors", position=c("left", "bottom"))
 
 #mean distance from school to fast-food
 
@@ -314,7 +314,7 @@ outlet (<800m)",
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
+  tm_credits("(c) OpenStreetMap contributors", position=c("left", "bottom"))
 
 
 #mean800m with city centre location and imd
@@ -352,7 +352,7 @@ from a school (mean per LSOA)")+
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
+  tm_credits("(c) OpenStreetMap contributors", position=c("left", "bottom"))+
   tm_shape(live_city_centre) +
   tm_borders(lwd = 2.5,
              col = "grey24")+
@@ -383,7 +383,7 @@ less than 800m from a school
   tm_scale_bar(position=c("left", "bottom"),
                breaks = c(0,1,2),
                text.size = 1)+
-  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
+  tm_credits("(c) OpenStreetMap contributors", position=c("left", "bottom"))+
   tm_shape(live_city_centre) +
   tm_borders(lwd = 2.5,
              col = "grey24")+
