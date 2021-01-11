@@ -285,6 +285,38 @@ tm_shape(school_data)+
                text.size = 1)+
   tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
 
+#mean distance from school to fast-food
+
+tm_shape(osm)+
+  tm_rgb(alpha = 0.3)+
+tm_shape(liverpool)+
+  tm_borders(lwd = 1.5)+
+  tm_add_legend(type = "line",
+                labels = "Liverpool",
+                col = "black",
+                lwd = 1)+
+tm_shape(school_data)+
+  tm_dots("average_dist_lt_800m",
+          style = "jenks",
+          palette= "-viridis",
+          size = 0.4,
+          title ="Average distance to a fast-food 
+outlet (<800m)",
+          colorNA = "white",
+          showNA = FALSE)+
+  tm_compass(north = 0,
+             position = c("right", "top"))+
+  tm_layout(legend.bg.color = "white",
+            legend.outside = TRUE,
+            legend.outside.position = "right",
+            legend.frame = TRUE,
+            legend.format = list(digits = 0))+
+  tm_scale_bar(position=c("left", "bottom"),
+               breaks = c(0,1,2),
+               text.size = 1)+
+  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))
+
+
 #mean800m with city centre location and imd
 
 central <- wards %>% filter(wd15nm == "Central")
@@ -329,6 +361,40 @@ from a school (mean per LSOA)")+
                 col = "grey24",
                 lwd = 3)
 
+#mean distance <800m by lsoa
+
+tm_shape(osm)+
+  tm_rgb(alpha = 0.5)+
+tm_shape(lt800m)+
+  tm_polygons("average_dist_lt_800m",
+             colorNA = "white",
+             palette = "viridis",
+             title = "Mean distance of fast-food outlets
+less than 800m from a school 
+(per LSOA)",
+             style = "jenks",
+             alpha = 0.7)+
+  tm_compass(north = 0,
+             position = c("right", "top"))+
+  tm_layout(legend.bg.color = "white",
+            legend.outside = TRUE,
+            legend.frame = "black",
+            legend.format = list(digits = 0))+
+  tm_scale_bar(position=c("left", "bottom"),
+               breaks = c(0,1,2),
+               text.size = 1)+
+  tm_credits("(c) OpenStreetMap contrbutors", position=c("left", "bottom"))+
+  tm_shape(live_city_centre) +
+  tm_borders(lwd = 2.5,
+             col = "grey24")+
+  tm_add_legend(type = "line",
+                labels = "City Centre",
+                col = "grey24",
+                lwd = 3)
+
+tm_shape(lt800m)+
+  tm_polygons("average_dist_lt_800m")
+
 #report data tables and aggregation by IMD
 
 ggplot_5 <- school_imd %>% 
@@ -347,10 +413,16 @@ ggplot_800 <- school_imd %>%
   group_by(IMD_Decile) %>%
   summarise(sum_ff = sum(ff_within_800m, na.rm = T))
 
+ggplot_lt800 <- school_imd %>% 
+  group_by(IMD_Decile) %>% 
+  summarise(sum_lt800 = mean(average_dist_lt_800m, na.rm = T))
+
+
 report_table <- ggplot_10
 report_table$within_800 <- ggplot_800$sum_ff 
 report_table$within_5min <- ggplot_5$sum_5
 report_table$within_400 <- ggplot_400$sum_400
+report_table$mean_lt800 <- ggplot_lt800$sum_lt800
 
 write.csv(report_table,"data/exports//report_table.csv", row.names = FALSE)
 
